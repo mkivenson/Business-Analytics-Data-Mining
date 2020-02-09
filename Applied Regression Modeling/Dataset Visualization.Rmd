@@ -1,0 +1,171 @@
+---
+title: "Business Analytics and Data Mining - Week 1 Notes"
+author: "Mary Anna Kivenson"
+date: "February 2, 2019"
+output:
+  rmarkdown::html_document:
+    theme: cosmo 
+    highlight: zenburn
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Linear Models with R Chapter 1  {.tabset .tabset-fade}
+
+```{r message=FALSE, warning=FALSE}
+library(faraway)
+library(GGally)
+library(ggplot2)
+```
+
+
+## Question 1.1
+
+The dataset teengamb concerns a study of teenage gambling in Britain. Make a numerical and graphical summary of the data, commenting on any features that you find interesting. Limit the output you present to a quantity that a busy reader would find sufficient to get a basic understanding of the data. 
+
+First, we load the data:
+
+```{r}
+data(teengamb)
+```
+
+Next, we take a look at a summary of the data:
+
+```{r}
+summary(teengamb)
+```
+
+Let's visualize the relationship of each of the features in the dataset with gamble.
+It looks like:
+
+* Income has a strong positive correlation with gamble
+* Verbal has a weak negative correlation with gamble
+* Status has a weak negative correlation with gamble
+* Sex has a moderate negative correlation with gamble
+
+```{r}
+ggcorr(teengamb)
+```
+
+
+## Question 1.3
+
+The dataset prostate is from a study on 97 men with prostate cancer who were due to receive a radical prostatectomy. Make a numerical and graphical summary of the data as in the first question.
+
+First, we load the data:
+
+```{r}
+data(prostate)
+```
+
+Next, we take a look at a summary of the data:
+
+```{r}
+summary(prostate)
+```
+
+Let's take a look at the distributions of each of these variables:
+
+* lcavol, lweight, age, and lpsa have somewhat normal distributions
+* lbph, svi, lcp, gleason, and pgg45 have left-skewed distributions
+
+```{r}
+ggplot(prostate, aes(lcavol)) + geom_histogram(binwidth = 1)
+ggplot(prostate, aes(lweight)) + geom_histogram(binwidth = 0.5)
+ggplot(prostate, aes(age)) + geom_histogram(binwidth = 5)
+ggplot(prostate, aes(lbph)) + geom_histogram(binwidth = 0.5)
+ggplot(prostate, aes(svi)) + geom_histogram(binwidth = 0.5)
+ggplot(prostate, aes(lcp)) + geom_histogram(binwidth = 0.5)
+ggplot(prostate, aes(gleason)) + geom_histogram(binwidth = 0.5)
+ggplot(prostate, aes(pgg45)) + geom_histogram(binwidth = 10)
+ggplot(prostate, aes(lpsa)) + geom_histogram(binwidth = 1)
+
+```
+
+
+## Question 1.4
+
+The dataset sat comes from a study entitled “Getting What You Pay For: The Debate Over  Equity  in  Public  School  Expenditures.”  Make  a  numerical  and  graphical summary of the data as in the first question.
+
+
+```{r}
+data(sat)
+```
+
+Next, we take a look at a summary of the data:
+
+```{r}
+summary(sat)
+```
+
+Let's visualize the relationship between expenditure, salary, and takers vs SAT score.
+
+* The relationship between expend and total score is weak and negative. Variability does not appear to be constant for all values of expend.
+* The relationship between salary and total score is weak and negative.
+* The relationship between takers and total score is strong and negative, and does not apear to be linear. 
+
+```{r}
+ggplot(sat, aes(expend, total)) + geom_point()
+ggplot(sat, aes(salary, total)) + geom_point()
+ggplot(sat, aes(takers, total)) + geom_point()
+```
+
+## Question 1.5
+
+The dataset divusa contains data on divorces in the United States from 1920 to 1996. Make a numerical and graphical summary of the data as in the first question.
+
+```{r}
+data(divusa)
+```
+
+Next, we take a look at a summary of the data:
+
+```{r}
+summary(divusa)
+```
+
+Let's look at time series of each of the variables. We notice that:
+
+* Divorce spikes in 1945 and 1980
+* Unemployed spikes in 1935
+* Feblab spikes in 1945
+* Marrige spikes in 1950
+* Birth spikes in 1955
+* Military spikes in 1945
+
+```{r}
+ggplot(divusa, aes(year, divorce)) + geom_step(direction = "hv") 
+ggplot(divusa, aes(year, unemployed)) + geom_step(direction = "hv") 
+ggplot(divusa, aes(year, femlab)) + geom_step(direction = "hv") 
+ggplot(divusa, aes(year, marriage)) + geom_step(direction = "hv") 
+ggplot(divusa, aes(year, birth)) + geom_step(direction = "hv") 
+ggplot(divusa, aes(year, military)) + geom_step(direction = "hv") 
+```
+
+Let's look at the relationship between femlab and divorce (since when more men entered the military during WW2, more women entered the work force)
+
+We see a spike in divorce right after the spike in women in the labor force.
+
+```{r}
+ggplot(divusa, aes(year)) + 
+  geom_line(aes(y = military, colour = "military")) + 
+  geom_line(aes(y = femlab, colour = "femlab"))
+```
+
+Let's look at the relationship between marriage, birth, and unemployement.
+
+* When unemployment goes up, marriage and birth drop
+* Marriage and birth are closely related except during 1950 - 1965
+
+```{r}
+ggplot(divusa, aes(year)) + 
+  geom_line(aes(y = unemployed, colour = "unemployed")) + 
+  geom_line(aes(y = marriage, colour = "marriage")) + 
+  geom_line(aes(y = birth, colour = "birth"))
+```
+
+
+
+
