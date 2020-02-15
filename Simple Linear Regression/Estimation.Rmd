@@ -1,0 +1,74 @@
+---
+title: "Business Analytics and Data Mining - Week 2 Notes"
+author: "Mary Anna Kivenson"
+date: "February 2, 2019"
+output:
+  rmarkdown::html_document:
+    theme: cosmo 
+    highlight: zenburn
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(faraway)
+library(GGally)
+library(ggplot2)
+```
+
+# A Modern Approach to Regression with R  {.tabset .tabset-fade}
+
+## Question 2.1
+
+The web site www.playbill.com provides weekly reports on the box office ticket sales for plays on Broadway in New York. We shall consider the data for the week October 11–17, 2004 (referred to below as the current week). The data are in the form of the gross box office results for the current week and the gross box office results for the previous week (i.e., October 3–10, 2004). The data, plotted in Figure 2 .6 , are available on the book web site in the file playbill.csv.  
+
+Fit the following model to the data: 
+
+$$Y = \beta_0 + \beta_1x + e$$
+
+where  Y  is the gross box office results for the current week (in \$) and  x  is the gross box office results for the previous week (in \$). Complete the following tasks:
+ 
+a) Find a 95% confidence interval for the slope of the regression model, B1. Is 1 a plausible value for B1? Give a reason to support your answer.
+
+b) Test the null hypotheses H0: B0 = 10000 against the two sided alternative. Interpret your result.
+
+c) Use the fitted regression model to estimate the gross box office results for the current week (in \$) for a production with \$400,000 in gross box office the  previous week. Find a 95% prediction interval for the gross box office results for the current week (in \$) for a production with \$400,000 in gross box office the previous week. Is \$450,000 a feasible value for the gross box office results in the current week, for a production with $400,000 in gross box office the previous week? Give a reason to support your answer. 
+
+d) Some promoters of Broadway plays use the prediction rule that next week’s gross box office results will be equal to this week’s gross box office results. Comment on the appropriateness of this rule.      
+
+## Question 2.2
+
+A story by James R. Hagerty entitled  With Buyers Sidelined, Home Prices Slide  published in the Thursday October 25, 2007 edition of the  Wall Street Journal  contained data on so-called fundamental housing indicators in major real estate markets across the US. The author argues that…  prices are generally falling and overdue loan payments are piling up . Thus, we shall consider data presented in the article on
+
+* Y  = Percentage change in average price from July 2006 to July 2007 (based on the S&P/Case-Shiller national housing index); and      
+* x  = Percentage of mortgage loans 30 days or more overdue in latest quarter (based on data from Equifax and Moody’s).  
+
+The data are available on the book web site in the file indicators.txt. Fit the following model to the data:  
+
+$$Y = \beta_0 + \beta_1x + e$$
+
+Complete the following tasks:
+
+a) Find a 95% confidence interval for the slope of the regression model, B1. On the basis of this confidence interval decide whether there is evidence of a significant negative linear association. 
+
+(b) Use the fitted regression model to estimate E(Y|X=4). Find a 95% confidence interval for E(Y|X=4). Is 0% a feasible value for E(Y|X=4)? Give a reason to support your answer.    
+
+#
+
+# Linear Models with R Chapter 2  {.tabset .tabset-fade}
+
+## Question 2.4
+
+The dataset prostate comes from a study on 97 men with prostate cancer who were due to receive a radical prostatectomy. Fit a model with lpsa as the response and l cavol as the predictor. Record the residual standard error and the R2. Now add lweight, svi, lpph, age, l cp, pgg45 and gleason to the model one at a time. For each model record the residual standard error and the R2. Plot the trends in these two statistics.
+
+## Question 2.5
+
+Using the prostate data, plot lpsa against l cavol. Fit the regressions of lpsa on lcavol and lcavol on lpsa. Display both regression lines on the plot. At what point do the two lines intersect?
+
+#
+
+
+
+
