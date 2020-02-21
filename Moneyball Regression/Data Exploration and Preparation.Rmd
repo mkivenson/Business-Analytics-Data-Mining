@@ -172,6 +172,47 @@ grid.arrange(ggplot(df, aes(bt_H, WINS)) + geom_point(),
 # Data Preparation
 
 
+### Outliers
+
+
+#### Extreme Values
+
+While exploring the data, we noticed that the max values of ph_H, ph_BB, ph_SO, and fd_E seem abnormally high.
+
+We see that the record for most hits in a season by team (ph_H) was set at 1,724 in 1921. However, we also know that the datapoints were normalized for 162 games in a season. To take a moderate approach, we will remove the some of the most egggregious outliers that are seen in these variables.
+
+```{r message=FALSE, warning=FALSE}
+grid.arrange(ggplot(df, aes(x = "ph_H", y = ph_H))+geom_boxplot(),
+             ggplot(df, aes(x = "ph_BB", y = ph_BB))+geom_boxplot(),
+             ggplot(df, aes(x = "ph_SO", y = ph_SO))+geom_boxplot(),
+             ggplot(df, aes(x = "fd_E", y = fd_E))+geom_boxplot(),
+             ncol=4)
+
+
+df <- filter(df, ph_H < 15000 | ph_BB < 1500 | ph_SO < 3000 | fd_E < 1500)
+```
+
+
+#### Cooks Distance
+
+We will also remove influencial outliers using Cooks distance. 
+
+```{r}
+mod <- lm(WINS ~ ., data=df)
+cooksd <- cooks.distance(mod)
+plot(cooksd, pch="*", cex=2, main="Influential Outliers by Cooks distance")
+abline(h = 4*mean(cooksd, na.rm=T), col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  # add labels
+```
+
+
+We remove the influencial outliers.
+
+```{r}
+influential <- as.numeric(names(cooksd)[(cooksd > 4*mean(cooksd, na.rm=T))])
+df <- df[-influential, ]
+```
+
 ### Fill Missing Values
 
 The following features have missing values.
@@ -198,48 +239,6 @@ aggr_plot <- aggr(df, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labe
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 tempData <- mice(df,m=5,maxit=50,meth='pmm',seed=500)
 df <- complete(tempData,1)
-```
-
-
-### Outliers
-
-
-#### Extreme Values
-
-While exploring the data, we noticed that the max values of ph_H, ph_BB, ph_SO, and fd_E seem abnormally high.
-
-We see that the record for most hits in a season by team (ph_H) was set at 1,724 in 1921. However, we also know that the datapoints were normalized for 162 games in a season. To take a moderate approach, we will remove the some of the most egggregious outliers that are seen in these variables.
-
-```{r message=FALSE, warning=FALSE}
-grid.arrange(ggplot(df, aes(x = "ph_H", y = ph_H))+geom_boxplot(),
-             ggplot(df, aes(x = "ph_BB", y = ph_BB))+geom_boxplot(),
-             ggplot(df, aes(x = "ph_SO", y = ph_SO))+geom_boxplot(),
-             ggplot(df, aes(x = "fd_E", y = fd_E))+geom_boxplot(),
-             ncol=4)
-
-
-df <- filter(df, ph_H < 15000 & ph_BB < 1500 & ph_SO < 3000 & fd_E < 1500)
-```
-
-
-#### Cooks Distance
-
-We will also remove influencial outliers using Cooks distance. 
-
-```{r}
-mod <- lm(WINS ~ ., data=df)
-cooksd <- cooks.distance(mod)
-plot(cooksd, pch="*", cex=2, main="Influential Outliers by Cooks distance")
-abline(h = 4*mean(cooksd, na.rm=T), col="red")  # add cutoff line
-text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  # add labels
-```
-
-
-We remove the influencial outliers.
-
-```{r}
-influential <- as.numeric(names(cooksd)[(cooksd > 4*mean(cooksd, na.rm=T))])
-df <- df[-influential, ]
 ```
 
 
