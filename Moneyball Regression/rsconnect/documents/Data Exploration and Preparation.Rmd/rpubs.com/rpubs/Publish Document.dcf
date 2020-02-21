@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/575082/7e7687b0a038408ca77141be528c09a7
+bundleId: https://api.rpubs.com/api/v1/document/575082/7e7687b0a038408ca77141be528c09a7
+url: http://rpubs.com/mkivenson/575082
+when: 1582258123.66509
