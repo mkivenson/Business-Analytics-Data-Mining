@@ -297,3 +297,8 @@ car::vif(model1)
 write.csv(df, "C:\\Users\\mkive\\Documents\\GitHub\\Business-Analytics-Data-Mining\\Business-Analytics-Data-Mining\\Moneyball Regression\\baseball_output.csv")
 ```
 
+```{r}
+df_eval <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Moneyball%20Regression/moneyball-evaluation-data.csv")[-1]
+df_eval
+```
+
