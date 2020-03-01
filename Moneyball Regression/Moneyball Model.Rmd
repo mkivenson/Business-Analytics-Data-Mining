@@ -1,0 +1,134 @@
+---
+title: "Model Moneyball"
+author: "Mary Anna Kivenson"
+date: "3/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(corrplot)
+library(psych)
+library(ggplot2)
+require(gridExtra)
+library(car)
+library(mice)
+library(VIM)
+library(caret)
+library(dplyr)
+library(MASS)
+```
+
+#### Read Data
+
+Here, we read the dataset and shorten the feature names for better readibility in visualizations.
+
+```{r}
+df <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Moneyball%20Regression/moneyball-training-data.csv")[-1]
+names(df) <- sub("TEAM_", "", names(df))
+names(df) <- sub("BATTING_", "bt_", names(df))
+names(df) <- sub("BASERUN_", "br_", names(df))
+names(df) <- sub("FIELDING_", "fd_", names(df))
+names(df) <- sub("PITCHING_", "ph_", names(df))
+names(df) <- sub("TARGET_", "", names(df))
+head(df)
+```
+
+
+
+### Fill Missing Values
+
+The following features have missing values.
+
+* bt_SO - Strikeouts by batters
+* br_SB - Stolen bases 
+* br_CS - Caught stealing 
+* bt_HBP - Batters hit by pitch (get a free base) 
+* ph_SO - Strikeouts by pitchers
+* fd_DP - Double Plays
+
+Since most values in bt_HBP are missing (90%), we will drop this feature. Features br_CS and fd_DP also have many missing values, and their correlation with WINS is also weak. They will be dropped from this model as well.
+
+```{r}
+df <- subset(df, select = -c(bt_HBP, br_CS, fd_DP))
+```
+
+
+
+#### Multivariate Imputation by Chained Equations (mice)
+
+We will use Multivariable Imputation by Chained Equations (mice) to fill the missing variables.
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+tempData <- mice(df,m=5,maxit=50,meth='pmm',seed=500)
+df <- complete(tempData,1)
+```
+
+
+## Model Build 
+
+### Feature Engineering
+
+We make a few adjustments to the featurs.
+
+* Replace bt_H (total base hits by batters) with BT_1B = bt_H - BT_2B - BT_3B - BT_HR (1B base hits)
+* Apply a log transform to all of the features that do not have a normal distribution. Many of the distributions are skewed or wide, so this will help normalize the features.
+* There are two features (bt_3B and ph_SO) that do not have a significant p-value when included in the linear regression model, so they will be dropped.
+
+```{r echo=TRUE}
+df2 <- df
+
+#feature modification 
+df2$bt_1B <- df$bt_H - df$bt_2B - df$bt_3B - df$bt_HR
+df2 <- subset(df2, select = -c(bt_H))
+
+#resolve skewness or wide distribution
+df2$bt_3B <- log(df2$bt_3B + 1)
+df2$br_SB <- log(df2$br_SB + 1)
+df2$ph_SO <- log(df2$ph_SO + 1)
+df2$bt_BB <- log(df2$bt_BB + 1)
+df2$ph_H <- log(df2$ph_H + 1)
+df2$ph_BB <- log(df2$ph_BB + 1)
+df2$ph_HR <- log(df2$ph_HR + 1)
+df2$fd_E <- log(df2$fd_E + 1)
+df2$bt_HR <- log(df2$bt_HR + 1)
+df2$bt_SO <- log(df2$bt_SO + 1)
+df2$bt_2B <- log(df2$bt_2B + 1)
+
+
+#drop features with low correlation
+df2 <- subset(df2, select = -c(bt_3B, ph_SO))
+```
+
+
+
+### Spatial Sign
+
+One of the significant aspects of this model is a spacial sign tranformation. Our data has very dramatic outliers, and it is difficult to detect them. Our linear regression model is highly sensitive to outliers, and a spacial sign transformaton will address that. This tranformation will project feature values onto a unit cirle, making all of the samples will be the same distance from the center of the circle This resolves the effect outliers have on our data. 
+
+[Spacial Sign Documentation](https://rdrr.io/cran/caret/man/spatialSign.html)
+
+In the previous step, we normalized and centered all of the features - this is a very important step that must be done before a spacial sign tranformation. We can now apply the transformation.
+
+```{r}
+df2 = as.data.frame(spatialSign(df2))
+df2
+```
+
+
+
+
+
+### Multiple Linear Regression
+
+```{r}
+# Multiple Linear Regression
+fit <- lm(WINS ~  ., data = df2)
+summary(fit) # show results
+```
+
+

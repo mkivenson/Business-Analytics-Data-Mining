@@ -1,0 +1,1118 @@
+---
+title: "CUNY DATA 621 HW1: Moneyball"
+author: "Group 2: Elina Azrilyan, Charls Joseph, Mary Anna Kivenson, Sunny Mehta, Vinayak Patel"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: pdf_document
+classoption: landscape
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(corrplot)
+library(psych)
+library(ggplot2)
+require(gridExtra)
+library(car)
+library(mice)
+library(VIM)
+library(caret)
+library(dplyr)
+library(MASS)
+library(knitr)
+library(caTools)
+library(glmnet)
+
+```
+
+# Introduction
+
+In this project we will examine a dataset of baseball team data from 1871 to 2006. Our goal is to build a multivariate regression model capable of predicting Wins out of sample. We will explore and prepare the data, build and select models, and discuss commentary and conclusions along the way.
+
+# Data Exploration
+
+#### Read Data
+
+Here, we read the dataset and shorten the feature names for better readibility in visualizations.
+
+```{r}
+df <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Moneyball%20Regression/moneyball-training-data.csv")[-1]
+names(df) <- sub("TEAM_", "", names(df))
+names(df) <- sub("BATTING_", "bt_", names(df))
+names(df) <- sub("BASERUN_", "br_", names(df))
+names(df) <- sub("FIELDING_", "fd_", names(df))
+names(df) <- sub("PITCHING_", "ph_", names(df))
+names(df) <- sub("TARGET_", "", names(df))
+head(df)
+```
+
+#### Summary
+
+First, we take a look at a summary of the data. A few things of interest are revealed:
+
+* bt_SO, br_SB, br_CS, bt_HBP, ph_SO, and fd_DP have missing values
+* The max values of ph_H, ph_BB, ph_SO, and fd_E seem abnormally high
+
+```{r}
+summary(df)
+```
+
+#### Histogram
+
+Next, we create histograms of each of the features and target variable. 
+
+* bt_H, bt_2B, bt_BB, br_CS, bt_HBP, fd_DP, WINS all have normal distributions
+* ph_H, ph_BB, ph_SO, and fd_E are highly right-skewed
+
+```{r warning=FALSE}
+grid.arrange(ggplot(df, aes(bt_H)) + geom_histogram(binwidth = 30),
+             ggplot(df, aes(bt_2B)) + geom_histogram(binwidth = 10),
+             ggplot(df, aes(bt_3B)) + geom_histogram(binwidth = 10),
+             ggplot(df, aes(bt_HR)) + geom_histogram(binwidth = 10),
+             ggplot(df, aes(bt_BB)) + geom_histogram(binwidth = 30),
+             ggplot(df, aes(bt_SO)) + geom_histogram(binwidth = 50),
+             ggplot(df, aes(br_SB)) + geom_histogram(binwidth = 30),
+             ggplot(df, aes(br_CS)) + geom_histogram(binwidth = 10),
+             ggplot(df, aes(bt_HBP)) + geom_histogram(binwidth = 3),
+             ggplot(df, aes(ph_H)) + geom_histogram(binwidth = 100),
+             ggplot(df, aes(ph_HR)) + geom_histogram(binwidth = 10),
+             ggplot(df, aes(ph_BB)) + geom_histogram(binwidth = 100),
+             ggplot(df, aes(ph_SO)) + geom_histogram(binwidth = 30),
+             ggplot(df, aes(fd_E)) + geom_histogram(binwidth = 30),
+             ggplot(df, aes(fd_DP)) + geom_histogram(binwidth = 10),
+             ggplot(df, aes(WINS)) + geom_histogram(binwidth = 5),
+             ncol=4)
+```
+
+
+#### QQ Plots
+
+* Most of the features are not lined up with the theoretical QQ plot, however this will be addressed by the models we build.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow=c(4,4), cex=.8, mai=c(0,0,0.2,0))
+invisible(qqPlot(~ bt_H, data = df, main = "bt_H"))
+invisible(qqPlot(~ bt_2B, data = df, main = "bt_2B"))
+invisible(qqPlot(~ bt_3B, data = df, main = "bt_3B"))
+invisible(qqPlot(~ bt_HR, data = df, main = "bt_HR"))
+invisible(qqPlot(~ bt_BB, data = df, main = "bt_BB"))
+invisible(qqPlot(~ bt_SO, data = df, main = "bt_SO"))
+invisible(qqPlot(~ br_SB, data = df, main = "br_SB"))
+invisible(qqPlot(~ br_CS, data = df, main = "br_CS"))
+invisible(qqPlot(~ bt_HBP, data = df, main = "bt_HBP"))
+invisible(qqPlot(~ ph_H, data = df, main = "ph_H"))
+invisible(qqPlot(~ ph_HR, data = df, main = "ph_HR"))
+invisible(qqPlot(~ ph_BB, data = df, main = "ph_BB"))
+invisible(qqPlot(~ ph_SO, data = df, main = "ph_SO"))
+invisible(qqPlot(~ fd_E, data = df, main = "fd_E"))
+invisible(qqPlot(~ fd_DP, data = df, main = "fd_DP"))
+invisible(qqPlot(~ WINS, data = df, main = "WINS"))
+```
+
+
+
+#### Boxplot
+
+* Most of the boxplots shown below reflect a long right tail with many outliers.
+
+```{r warning=FALSE}
+grid.arrange(ggplot(df, aes(x = "bt_H", y = bt_H))+geom_boxplot(),
+             ggplot(df, aes(x = "bt_2B", y = bt_2B))+geom_boxplot(),
+             ggplot(df, aes(x = "bt_3B", y = bt_3B))+geom_boxplot(),
+             ggplot(df, aes(x = "bt_HR", y = bt_HR))+geom_boxplot(),
+             ggplot(df, aes(x = "bt_BB", y = bt_BB))+geom_boxplot(),
+             ggplot(df, aes(x = "bt_SO", y = bt_SO))+geom_boxplot(),
+             ggplot(df, aes(x = "br_SB", y = br_SB))+geom_boxplot(),
+             ggplot(df, aes(x = "br_CS", y = br_CS))+geom_boxplot(),
+             ggplot(df, aes(x = "bt_HBP", y = bt_HBP))+geom_boxplot(),
+             ggplot(df, aes(x = "ph_H", y = ph_H))+geom_boxplot(),
+             ggplot(df, aes(x = "ph_HR", y = ph_HR))+geom_boxplot(),
+             ggplot(df, aes(x = "ph_BB", y = ph_BB))+geom_boxplot(),
+             ggplot(df, aes(x = "ph_SO", y = ph_SO))+geom_boxplot(),
+             ggplot(df, aes(x = "fd_E", y = fd_E))+geom_boxplot(),
+             ggplot(df, aes(x = "fd_DP", y = fd_DP))+geom_boxplot(),
+             ggplot(df, aes(x = "WINS", y = WINS))+geom_boxplot(),
+             ncol=4)
+```
+
+
+
+
+#### Correlation Plot
+
+* There is a strong positive correlation between ph_H and bt_H
+* There is a strong positive correlation between ph_HR and bt_HR
+* There is a strong positive correlation between ph_BB and bt_BB
+* There is a strong positive correlation between ph_SO and bt_SO
+* There seems to be a weak correlation between bt_HBP/br_SB and Wins
+
+```{r}
+corrplot(cor(df, use = "complete.obs"), method ="color", type="lower", addrect = 1, number.cex = 0.5, sig.level = 0.30,
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.srt = 25, # Text label color and rotation
+         tl.cex = 0.7,
+         diag = TRUE)
+```
+
+
+
+
+#### Scatter Plots
+
+Here, we see a scatter plot of each of the feature variables with the target variable. 
+
+```{r warning=FALSE}
+grid.arrange(ggplot(df, aes(bt_H, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(bt_2B, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(bt_3B, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(bt_HR, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(bt_BB, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(bt_SO, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(br_SB, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(br_CS, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(bt_HBP, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(ph_H, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(ph_HR, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(ph_BB, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(ph_SO, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(fd_E, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ggplot(df, aes(fd_DP, WINS)) + geom_point(alpha = 1/10)+geom_smooth(method=lm),
+             ncol=4)
+```
+
+# Data Preparation
+
+
+### Outliers
+
+
+#### Extreme Values
+
+While exploring the data, we noticed that the max values of ph_H, ph_BB, ph_SO, and fd_E seem abnormally high.
+
+We see that the record for most hits in a season by team (ph_H) was set at 1,724 in 1921. However, we also know that the datapoints were normalized for 162 games in a season. To take a moderate approach, we will remove the some of the most egggregious outliers that are seen in these variables.
+
+```{r message=FALSE, warning=FALSE}
+grid.arrange(ggplot(df, aes(x = "ph_H", y = ph_H))+geom_boxplot(),
+             ggplot(df, aes(x = "ph_BB", y = ph_BB))+geom_boxplot(),
+             ggplot(df, aes(x = "ph_SO", y = ph_SO))+geom_boxplot(),
+             ggplot(df, aes(x = "fd_E", y = fd_E))+geom_boxplot(),
+             ncol=4)
+
+
+df <- filter(df, ph_H < 15000 | ph_BB < 1500 | ph_SO < 3000 | fd_E < 1500)
+```
+
+
+#### Cooks Distance
+
+We will also remove influential outliers using Cooks distance. 
+
+```{r}
+mod <- lm(WINS ~ ., data=df)
+cooksd <- cooks.distance(mod)
+plot(cooksd, pch="*", cex=2, main="Influential Outliers by Cooks distance")
+abline(h = 4*mean(cooksd, na.rm=T), col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  # add labels
+```
+
+
+We remove the influential outliers.
+
+```{r}
+influential <- as.numeric(names(cooksd)[(cooksd > 4*mean(cooksd, na.rm=T))])
+df <- df[-influential, ]
+```
+
+### Fill Missing Values
+
+The following features have missing values.
+
+* bt_SO - Strikeouts by batters
+* br_SB - Stolen bases 
+* br_CS - Caught stealing 
+* bt_HBP - Batters hit by pitch (get a free base) 
+* ph_SO - Strikeouts by pitchers
+* fd_DP - Double Plays
+
+Since most values in bt_HBP are missing (90%), we will drop this feature.
+
+
+#### Multivariate Imputation by Chained Equations (mice)
+
+We will use Multivariable Imputation by Chained Equations (mice) to fill the missing variables.
+
+```{r}
+df <- subset(df, select = -c(bt_HBP))
+aggr_plot <- aggr(df, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(data), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+tempData <- mice(df,m=5,maxit=50,meth='pmm',seed=500)
+df <- complete(tempData,1)
+```
+
+
+### Address Correlated Features
+
+While exploring the data, we noticed several features had strong positive linear relationships.
+
+Let's run a Variance Inflation Factor test to detect multicollinearity. Features with a VIF score > 10 will be reviewed. 
+
+```{r}
+model1 <- lm(WINS ~., data = df)
+car::vif(model1)
+```
+
+
+Let's make another correlation plot with only these features.
+
+* bt_SO (strikeouts by batters) and bt_H (base hits by batters) have a strong positive correlation
+* bt_H (base hits by batters) and bt_BB (walks by batters) have a strong positive correlation
+* ph_BB (walks allowed) and bt_BB (walks by batters) have a strong negative correlation 
+* ph_SO (strikeouts by pitchers) and bt_SO (strikeouts by batters) have a moderate negative correlation
+* ph_HR (homeruns allowed) and bt_HR (homeruns by batters) have a strong negative correlation
+* ph_SO (strikeouts by pitchers) and ph_BB (walks allowed) have a moderate negative correation
+
+```{r}
+corrplot(cor(subset(df, select = c(WINS, bt_H, bt_HR, bt_BB, bt_SO, ph_H, ph_HR, ph_BB, ph_SO)), use = "complete.obs"), method ="color", type="lower", addrect = 1, number.cex = 0.5, sig.level = 0.30,
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.srt = 25, # Text label color and rotation
+         tl.cex = 0.7,
+         diag = TRUE)
+```
+
+
+To fix this, we can remove some correlated features and combine others. 
+
+* Remove bt_HR. It has an extremely strong correlation with ph_HR.
+* Remove bt_SO. It has an extremely strong correlation with ph_SO.
+* Replace bt_H (total base hits by batters) with BT_1B = bt_H - BT_2B - BT_3B - BT_HR (1B base hits)
+* Replace ph_BB and bt_BB as a ratio of walks by batters to walks allowed
+
+
+```{r}
+df$bt_1B <- df$bt_H - df$bt_2B - df$bt_3B - df$bt_HR
+df$BB <- df$bt_BB / df$ph_BB
+df2 <- subset(df, select = -c(bt_HR, bt_SO, bt_H, bt_BB, ph_BB))
+```
+
+These adjustments result in less multicollinearity.
+
+
+```{r}
+model1 <- lm(WINS ~., data = df2)
+car::vif(model1)
+```
+
+
+### Create Output
+
+```{r}
+df_eval <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Moneyball%20Regression/moneyball-evaluation-data.csv")[-1]
+head(df_eval)
+```
+
+## Conclusions from Data Examination
+
+Thoroughly understanding our data before building models is a crucial step. Utilizing domain knowledge and common sense can go a long way in aiding the prediction process. In calling upon baseball subject matter considerations here, we can make a few comments.
+
+In general, the Pitching data looks strange, relative to the Batting data. A team's pitching and batting should be largely independent. And in theory we know pitchers giving up hits should be detrimental to winning, while batters getting hits should be beneficial. We observe the latter in the data, but not the former.  
+
+Also, the scale of some of the pitching variables are wildly different than we'd expect. It appears as though some of the pitching data, particularly Hits, has been drastically altered such that even after data cleaning, imputation, removal, and transformation, it may still not be of much use in a predictive model.
+
+On the Batter and Baserunning side, the Stolen Bases, Caught Stealing, and Hit By Pitch variables are missing a lot of values. This may be detrimental to their utility in the model fitting process.
+
+# Build Models
+
+### Linear Model 1.
+
+We will begin with all independent variables and use the back elimination method to eliminate the non-significant ones. 
+
+```{r}
+be_lm1 <- lm(WINS ~., data = df)
+summary(be_lm1)
+```
+
+We will start by eliminating the variables with high p-values and lowest significance from the model
+
+Let's take a look at the resulting model:
+```{r}
+be_lm1_1 <- lm(WINS ~ bt_H + bt_SO + br_SB + ph_HR + fd_E + fd_DP + BB, data = df)
+summary(be_lm1_1)
+```
+
+We are seeing high significance indicators and p-values of 0 across all 10 remaining variables, however our R squared value is rather low - 36. 
+
+The next step is to check residuals plot and QQ plot to check the validity of our model.
+
+```{r, fig.height = 3, fig.width = 5}
+plot(be_lm1_1$residuals)
+abline(h = 0, lty = 3)
+
+qqnorm(be_lm1_1$residuals)
+qqline(be_lm1_1$residuals)
+```
+
+Both of these plots show that the model is a reasonable model. There is no pattern evident in the residuals and normality assumptions is close enough, even though there are some outliers. 
+
+We are going to use Box-Cox transformation to determine if a transformation is required.
+```{r, fig.height = 3, fig.width = 5}
+boxcox(be_lm1_1, data=df, plotit=T)
+```
+
+Lambda is close to 1, so no transformation is needed. 
+
+### Linear Model 2.
+
+This Linear Model will be built using the variables we believe would have the highest corelation with WINs.
+
+THe following variables will be used:
+- Base Hits by batters (1B,2B,3B,HR)
+- Walks by batters
+- Stolen bases
+- Strikeouts by batters
+- Errors
+- Strikeouts by pitchers
+- Double Plays
+- Hits allowed
+
+```{r}
+be_lm2b <- lm(WINS ~ bt_H + bt_BB + br_SB + bt_SO + fd_E + ph_SO + fd_DP + ph_H, df)
+summary(be_lm2b)
+```
+
+Let's remove the two variables with low significance:
+```{r}
+be_lm2b <- lm(WINS ~ I(bt_H^1/2) + I(bt_BB^1/2) +  I(br_SB^1/2) + I(fd_E^1/2) + I(fd_DP^1/2) + I(ph_H^1/2), df)
+summary(be_lm2b)
+```
+
+```{r, fig.height = 3, fig.width = 5}
+plot(be_lm2b$residuals)
+abline(h = 0, lty = 3)
+
+qqnorm(be_lm2b$residuals)
+qqline(be_lm2b$residuals)
+```
+
+```{r, fig.height = 3, fig.width = 5}
+dfeval <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Moneyball%20Regression/moneyball-evaluation-data.csv")[-1]
+names(dfeval) <- sub("TEAM_", "", names(dfeval))
+names(dfeval) <- sub("BATTING_", "bt_", names(dfeval))
+names(dfeval) <- sub("BASERUN_", "br_", names(dfeval))
+names(dfeval) <- sub("FIELDING_", "fd_", names(dfeval))
+names(dfeval) <- sub("PITCHING_", "ph_", names(dfeval))
+names(dfeval) <- sub("TARGET_", "", names(dfeval))
+head(dfeval)
+
+pred <- predict(be_lm2b, dfeval, type="response", se.fit=FALSE)
+final <- data.frame(Win_Pred=pred)
+Mean = mean(final[, 1], na.rm = TRUE)
+final[,1][is.na(final[,1])] <- Mean
+#write.csv(final,"Baseball_pred.csv", row.names = FALSE)
+
+plot(be_lm2b)
+```
+
+
+
+# Further Model Building and Model Selection
+
+### Load the dataset
+
+Load the data set that was curated after the preliminary explanatory analysis.  
+
+Plotted a correlation matrix on the original data set
+
+```{r}
+df = read.csv('https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Moneyball%20Regression/baseball_output.csv')
+corrplot(cor(df, use = "complete.obs"), method="color", type="lower", tl.col = "black", tl.srt = 25)
+
+```
+
+Found that there is a data point with 0 value which needs to be corrected to a non-zero val for BOX-COX transformation later
+
+```{r}
+df[df$WINS == 0,]
+
+```
+
+Remove the index column that got added in the preliminary step. 
+Also lift each datapoints by 1 to fix the zero data point. 
+
+```{r}
+df <- subset(df, select = -c(X))
+df <- df + 1  
+```
+
+
+
+Split the data into training and test data set(80% training and 20% testing)
+
+```{r}
+# Splitting the dataset into the Training set and Test set
+# install.packages('caTools')
+set.seed(123)
+split = sample.split(df$WINS, SplitRatio = 0.8)
+training_set = subset(df, split == TRUE)
+test_set = subset(df, split == FALSE)
+
+```
+
+
+
+## Assumption of Ordinary Least square regression
+Before building and trying out different linear regression models, we will review the assumptions for the OLS algorithm to make it perform well. 
+
+1. Residual Error should be normally distributed
+2. Absence of hetroschdasticity 
+3. Absence of Colinearity 
+
+We will check these assumption/factors while reviewing the results of each model. 
+
+## Full Model 
+
+Fitting a full model with all remaining independent variables( "bt_H"  "bt_2B" "bt_3B" "bt_HR" "bt_BB" "bt_SO" "br_SB" "br_CS" "ph_H"  "ph_HR" "ph_BB" "ph_SO" "fd_E"  "fd_DP" "bt_1B" "BB") and the response variable WINS
+
+```{r}
+colnames(training_set)
+```
+
+create a dataframe for holding the regression metrics. 
+
+
+```{r}
+regressor_metrics <- data.frame(matrix(ncol = 6, nrow = 0) ,stringsAsFactors = FALSE)
+```
+
+```{r}
+# Fitting Multiple Linear Regression to the Training set
+fullregressor = lm(formula = WINS ~ . ,
+               data = training_set)
+```
+
+## Full model Stats
+
+```{r, fig.height = 3, fig.width = 5}
+
+summary(fullregressor)
+plot(fullregressor$residuals)
+abline(h = 0, lty = 3)
+
+#par(mfrow=c(2,2))
+plot(fullregressor)
+
+```
+
+## Test evaluation Metrics and prediction results
+
+We see the two independent variables has p-value > 0.05. we will remove this independent variable from the model and try its performance. 
+
+Since the R-square and RMSE of the model is not that great and it shows a possible underfitting problem. We will try out some transformations like backward elimination, square, logarithmic and BOX-COX transformations and review the results. 
+
+```{r}
+
+predictions = predict(fullregressor, newdata = test_set)
+head(data.frame(
+  predictions = predictions,
+  actual = test_set$WINS
+))
+rmse_test <- round(RMSE(predictions, test_set$WINS), digits=4)
+r2_test <- round(R2(predictions, test_set$WINS), digits = 4)
+adj_r2_train <- round(summary(fullregressor)$adj.r.squared, digits = 4)
+r2_train <- round(summary(fullregressor)$r.squared, digits = 4)
+rmse_train <- round(sqrt(mean(fullregressor$residuals^2)), digits = 4)
+
+data.frame(
+  rmse_test = rmse_test,
+  rmse_train = rmse_train,
+  r2_train = r2_train,
+  r2_test = r2_test,
+  adj_r2_train = adj_r2_train
+  
+)
+regressor_metrics <- rbind(regressor_metrics, c("Full-Model", r2_train , adj_r2_train, rmse_train  , rmse_test , r2_test), stringsAsFactors = FALSE)
+
+```
+
+## Backward Elimination 
+
+Through backward elimination process,  some independent variables(ph_SO,br_CS, bt_1B) that has pvalue more than the significance level of 0.05 were removed from the full model 
+
+```{r}
+regressor_backward_E1 = lm(formula = WINS ~  bt_H+ bt_2B+ bt_3B+ bt_HR+ bt_BB+ bt_SO+ br_SB+ ph_H+ ph_HR+ ph_BB + fd_E+ fd_DP+ BB ,data = training_set)
+```
+
+## Backward elimination Model Stats
+```{r, fig.height = 3, fig.width = 5}
+
+summary(regressor_backward_E1)
+plot(regressor_backward_E1$residuals)
+abline(h = 0, lty = 3)
+
+#par(mfrow=c(2,2))
+plot(regressor_backward_E1)
+
+```
+
+## Test evaluation Metrics and prediction results
+
+
+```{r}
+
+predictions = predict(regressor_backward_E1, newdata = test_set)
+head(data.frame(
+  predictions = predictions,
+  actual = test_set$WINS
+))
+
+rmse_test <- round(RMSE(predictions, test_set$WINS), digits=4)
+r2_test <- round(R2(predictions, test_set$WINS), digits = 4)
+adj_r2_train <- round(summary(regressor_backward_E1)$adj.r.squared, digits = 4)
+r2_train <- round(summary(regressor_backward_E1)$r.squared, digits = 4)
+rmse_train <- round(sqrt(mean(regressor_backward_E1$residuals^2)), digits = 4)
+
+data.frame(
+  rmse_test = rmse_test,
+  rmse_train = rmse_train,
+  r2_train = r2_train,
+  r2_test = r2_test,
+  adj_r2_train = adj_r2_train
+  
+)
+regressor_metrics <- rbind(regressor_metrics, c("Backward elimination-1", r2_train , adj_r2_train, rmse_train  , rmse_test , r2_test), stringsAsFactors = FALSE)
+
+```
+
+
+
+
+## Backward Elimination + removal of colinear Variables 
+
+
+Performing a VIF Test on all variables to remove some independent variables which are colinear( VIF has more than 5)
+
+```{r}
+model1 <- lm(WINS ~ bt_H+ bt_2B+ bt_3B+ bt_HR+ bt_BB+ bt_SO+ br_SB+ ph_H+ ph_HR+ ph_BB + fd_E+ fd_DP+ BB, data = df)
+car::vif(model1)
+
+```
+
+remove Colinear variables bt_HR + ph_HR +  BB + bt_BB.
+Also remove variables with p-value > 0.05 (bt_3B, bt_SO, ph_H)
+
+```{r}
+regressor_backward_E2 = lm(formula = WINS ~  bt_H+ bt_2B + br_SB + ph_BB + fd_E+ fd_DP  ,data = training_set)
+```
+
+## Backward elimination Model Stats( with removal of colinear variables)
+```{r, fig.height = 3, fig.width = 5}
+
+summary(regressor_backward_E2)
+plot(regressor_backward_E2$residuals)
+abline(h = 0, lty = 3)
+
+#par(mfrow=c(2,2))
+plot(regressor_backward_E2)
+
+```
+
+```{r}
+
+predictions = predict(regressor_backward_E2, newdata = test_set)
+head(data.frame(
+  predictions = predictions,
+  actual = test_set$WINS
+))
+
+rmse_test <- round(RMSE(predictions, test_set$WINS), digits=4)
+r2_test <- round(R2(predictions, test_set$WINS), digits = 4)
+adj_r2_train <- round(summary(regressor_backward_E2)$adj.r.squared, digits = 4)
+r2_train <- round(summary(regressor_backward_E2)$r.squared, digits = 4)
+rmse_train <- round(sqrt(mean(regressor_backward_E2$residuals^2)), digits = 4)
+
+data.frame(
+  rmse_test = rmse_test,
+  rmse_train = rmse_train,
+  r2_train = r2_train,
+  r2_test = r2_test,
+  adj_r2_train = adj_r2_train
+  
+)
+regressor_metrics <- rbind(regressor_metrics, c("Backward elimination-2", r2_train , adj_r2_train, rmse_train  , rmse_test , r2_test), stringsAsFactors = FALSE)
+```
+
+
+## Square transformation Model
+
+
+
+```{r}
+# Fitting Multiple Linear Regression to the Training set
+#"bt_H"  "bt_2B" "bt_3B" "br_SB" "br_CS" "ph_H"  "fd_E"  "fd_DP"
+regressor_sq = lm(WINS ~ I(bt_H^2)+ I(bt_2B^2) + (br_SB^2) + (ph_BB^2) + (fd_E^2)+ (fd_DP^2) ,
+               data = training_set)
+```
+
+## Square transformation Model Stats
+
+
+```{r, fig.height = 3, fig.width = 5}
+summary(regressor_sq)
+plot(regressor_sq$residuals)
+abline(h = 0, lty = 3)
+#par(mfrow=c(2,2))
+plot(regressor_sq)
+```
+
+## Test evaluation Metrics and prediction results
+
+RMSE(test) has improved, but R-square is reduced slightly. 
+
+```{r}
+
+
+predictions = predict(regressor_sq, newdata = test_set)
+head(data.frame(
+  predictions = predictions,
+  actual = test_set$WINS
+))
+
+rmse_test <- round(RMSE(predictions, test_set$WINS), digits=4)
+r2_test <- round(R2(predictions, test_set$WINS), digits = 4)
+adj_r2_train <- round(summary(regressor_sq)$adj.r.squared, digits = 4)
+r2_train <- round(summary(regressor_sq)$r.squared, digits = 4)
+rmse_train <- round(sqrt(mean(regressor_sq$residuals^2)), digits = 4)
+
+data.frame(
+  rmse_test = rmse_test,
+  rmse_train = rmse_train,
+  r2_train = r2_train,
+  r2_test = r2_test,
+  adj_r2_train = adj_r2_train
+  
+)
+regressor_metrics <- rbind(regressor_metrics, c("Square Transformation", r2_train , adj_r2_train, rmse_train  , rmse_test , r2_test), stringsAsFactors = FALSE)
+
+```
+
+
+## Logarithmic transformation 
+```{r}
+# Fitting Multiple Linear Regresion to the Training set
+regressor_log = lm(WINS ~  log1p(bt_H)+ log1p(bt_2B) + log1p(br_SB) + log1p(ph_BB) + log1p(fd_E)+ log1p(fd_DP),
+               data = training_set)
+
+```
+
+## Logarithmic transformation Stats
+
+
+```{r, fig.height = 3, fig.width = 5}
+summary(regressor_log)
+plot(regressor_log$residuals)
+abline(h = 0, lty = 3)
+#par(mfrow=c(2,2))
+plot(regressor_log)
+```
+
+## Test evaluation Metrics and prediction results
+
+Residual Error plot developed a slight cure and OLS assumptions are not met. 
+
+```{r}
+
+
+predictions = predict(regressor_log, newdata = test_set)
+head(data.frame(
+  predictions = predictions,
+  actual = test_set$WINS
+))
+
+rmse_test <- round(RMSE(predictions, test_set$WINS), digits=4)
+r2_test <- round(R2(predictions, test_set$WINS), digits = 4)
+adj_r2_train <- round(summary(regressor_log)$adj.r.squared, digits = 4)
+r2_train <- round(summary(regressor_log)$r.squared, digits = 4)
+rmse_train <- round(sqrt(mean(regressor_log$residuals^2)), digits = 4)
+
+data.frame(
+  rmse_test = rmse_test,
+  rmse_train = rmse_train,
+  r2_train = r2_train,
+  r2_test = r2_test,
+  adj_r2_train = adj_r2_train
+  
+)
+regressor_metrics <- rbind(regressor_metrics, c("Log Transformation", r2_train , adj_r2_train, rmse_train  , rmse_test , r2_test), stringsAsFactors = FALSE)
+
+```
+## Box Cox transformation 
+
+Trying out a Box-Cox transformation. Used the best model so far which is backward elimination model to apply Box-Cox transformation. Lambda comes close to 1. So it doesnt make any difference and there is no need to apply the Box-Cox tranformation. 
+
+```{r}
+
+bc = boxcox(regressor_backward_E2)
+```
+
+
+## Cross Validation 
+
+Performing a cross validation algorithm if it make some improvement. 
+
+```{r results="hide"}
+
+set.seed(123)
+
+regression_cv <- train(
+  WINS ~ bt_H+ bt_2B + br_SB + ph_BB + fd_E+ fd_DP , training_set,
+  method = "lm",
+  trControl = trainControl(
+    method = "cv", 
+    number =10,
+    verboseIter = TRUE
+  )
+)
+
+```
+
+```{r}
+summary(regression_cv)
+
+```
+
+```{r}
+
+predictions = predict(regression_cv, newdata = test_set)
+head(data.frame(
+  predictions = predictions,
+  actual = test_set$WINS
+))
+
+rmse_test <- round(RMSE(predictions, test_set$WINS), digits=4)
+r2_test <- round(R2(predictions, test_set$WINS), digits = 4)
+adj_r2_train <- round(summary(regression_cv)$adj.r.squared, digits = 4)
+r2_train <- round(summary(regression_cv)$r.squared, digits = 4)
+rmse_train <- round(sqrt(mean(regression_cv$residuals^2)), digits = 4)
+
+data.frame(
+  rmse_test = rmse_test,
+  rmse_train = rmse_train,
+  r2_train = r2_train,
+  r2_test = r2_test,
+  adj_r2_train = adj_r2_train
+  
+)
+regressor_metrics <- rbind(regressor_metrics, c("Cross Validation", r2_train , adj_r2_train, rmse_train  , rmse_test , r2_test), stringsAsFactors = FALSE)
+
+metrics <- c("regressor", "Rsquare(Train-set)", "Adjusted-RSquare(Training-set)","RMSE(Train-set)" ,  "RMSE(Test-set)", "R-Square(Test)")
+colnames(regressor_metrics) <- metrics
+kable(regressor_metrics)
+```
+
+
+### Spatial Sign Transformation
+
+This model will rely heavily on transforming features into a normal distribution and using a spacial sign tranformation to reduct sensitivity to outliers. We will drop three columns in this model: BT_HBP, br_CS, and fd_DP because of their low correlation with WINS and their high amount of missing values. Other features with missing outliers will be filled with MICE in this model.
+
+
+#### Missing Values
+
+
+```{r}
+df2 <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Moneyball%20Regression/moneyball-training-data.csv")[-1]
+names(df2) <- sub("TEAM_", "", names(df))
+names(df2) <- sub("BATTING_", "bt_", names(df))
+names(df2) <- sub("BASERUN_", "br_", names(df))
+names(df2) <- sub("FIELDING_", "fd_", names(df))
+names(df2) <- sub("PITCHING_", "ph_", names(df))
+names(df2) <- sub("TARGET_", "", names(df))
+
+df2 <- subset(df2, select = -c(bt_HBP, br_CS, fd_DP))
+tempData <- mice(df,m=5,maxit=50,meth='pmm',seed=500)
+df2 <- complete(tempData,1)
+```
+
+#### Feature Engineering
+
+We make a few adjustments to the featurs.
+
+* Replace bt_H (total base hits by batters) with BT_1B = bt_H - BT_2B - BT_3B - BT_HR (1B base hits)
+* Apply a log transform to all of the features that do not have a normal distribution. Many of the distributions are skewed or wide, so this will help normalize the features.
+* There are two features (bt_3B and ph_SO) that do not have a significant p-value when included in the linear regression model, so they will be dropped.
+
+```{r echo=TRUE}
+#feature modification 
+df2$bt_1B <- df$bt_H - df$bt_2B - df$bt_3B - df$bt_HR
+df2 <- subset(df2, select = -c(bt_H))
+
+#resolve skewness or wide distribution
+df2$bt_3B <- log(df2$bt_3B + 1)
+df2$br_SB <- log(df2$br_SB + 1)
+df2$ph_SO <- log(df2$ph_SO + 1)
+df2$bt_BB <- log(df2$bt_BB + 1)
+df2$ph_H <- log(df2$ph_H + 1)
+df2$ph_BB <- log(df2$ph_BB + 1)
+df2$ph_HR <- log(df2$ph_HR + 1)
+df2$fd_E <- log(df2$fd_E + 1)
+df2$bt_HR <- log(df2$bt_HR + 1)
+df2$bt_SO <- log(df2$bt_SO + 1)
+df2$bt_2B <- log(df2$bt_2B + 1)
+
+
+#drop features with low correlation
+df2 <- subset(df2, select = -c(bt_3B, ph_SO))
+```
+
+#### Spatial Sign
+
+One of the significant aspects of this model is a spacial sign tranformation. Our data has very dramatic outliers, and it is difficult to detect them. Our linear regression model is highly sensitive to outliers, and a spacial sign transformaton will address that. This tranformation will project feature values onto a unit cirle, making all of the samples will be the same distance from the center of the circle This resolves the effect outliers have on our data. 
+
+[Spacial Sign Documentation](https://rdrr.io/cran/caret/man/spatialSign.html)
+
+In the previous step, we normalized and centered all of the features - this is a very important step that must be done before a spacial sign tranformation. We can now apply the transformation.
+
+```{r}
+df2 = as.data.frame(spatialSign(df2))
+```
+
+
+#### Multiple Linear Regression
+
+This results in an RMSE of 0.98, so there is likely to be overfitting. 
+
+```{r}
+# Multiple Linear Regression
+fit <- lm(WINS ~  ., data = df2)
+summary(fit) # show results
+```
+
+## Summary of findings
+
+1. Model built using Backward Elimination-2 and Square transformation looks to be the best among all models considering comparetively low RMSE(test) and comparetively good R-square values. 
+
+2. Less R^2 and high RMSE shows an underfitting problem. The dataset doesnt follow a linear relationship with the response variable. None of the transformation helped improving the metrics. 
+
+3. Although the model exhibits an underfitting problem, it slightly met the ordinary least square assumptions.
+  a. Residuals doesnt have high variance. 
+  b. Residual QQ plots gives a slight straight line. 
+  
+4. Residual Error plot developed a slight cure and OLS assumptions are not met.
+
+5. Metrics shows RMSE(Train) and RMSE(TEST) is almost same and dont have much differences. But the R^2 has some difference for all the models. We will see some overfitting solution and check the model gets improved further in next step. 
+
+## Does overfitting exist? 
+
+RMSE(train) and RMSE(test) doesn't indicate there is a problem of overfitting, but R^2 has some difference. We want to see if the model gets improved using some of the underfitting solutions. 
+
+
+## Ridge Regression
+
+Lets try out the ridge regression with cross validation.
+
+```{r}
+lambda <- 10^seq(-3, 3, length = 100)
+
+# Build the model
+set.seed(123)
+ridge <- train(
+  WINS ~ bt_H+ bt_2B + br_SB + ph_BB + fd_E+ fd_DP , data = training_set, method = "glmnet",
+  trControl = trainControl("cv", number = 10),
+  tuneGrid = expand.grid(alpha = 0, lambda = lambda)
+  )
+# Model coefficients
+coef(ridge$finalModel, ridge$bestTune$lambda)
+
+```
+
+R^2(test) and RMSE doesn't get improved 
+
+```{r}
+# Make predictions
+predictions <- predict(ridge, test_set)
+# Model prediction performance
+head(data.frame(
+  predictions = predictions,
+  actual = test_set$WINS
+))
+
+data.frame(
+  RMSE = RMSE(predictions, test_set$WINS),
+  Rsquare = R2(predictions, test_set$WINS)
+)
+```
+
+## Lasso 
+Lets try out the Lasso regression with cross validation.
+
+
+```{r, warning=FALSE}
+# Build the model
+set.seed(123)
+lasso <- train(
+  WINS ~ bt_H+ bt_2B + br_SB + ph_BB + fd_E+ fd_DP , data = training_set, method = "glmnet",
+  trControl = trainControl("cv", number = 10),
+  tuneGrid = expand.grid(alpha = 1, lambda = lambda)
+  )
+# Model coefficients
+coef(lasso$finalModel, lasso$bestTune$lambda)
+
+```
+
+R^2 and RMSE doesn't get improved 
+
+
+```{r}
+# Make predictions
+predictions <-  predict(lasso, test_set)
+# Model prediction performance
+data.frame(
+  RMSE = RMSE(predictions, test_set$WINS),
+  Rsquare = R2(predictions, test_set$WINS)
+)
+
+```
+
+## Elastic net 
+
+Lets try out the Elastic net regression with cross validation.
+
+
+```{r}
+# Build the model
+set.seed(123)
+elastic <- train(
+  WINS  ~bt_H+ bt_2B + br_SB + ph_BB + fd_E+ fd_DP , data = training_set, method = "glmnet",
+  trControl = trainControl("cv", number = 10),
+  tuneLength = 10
+  )
+# Model coefficients
+coef(elastic$finalModel, elastic$bestTune$lambda)
+
+```
+R^2 and RMSE doesn't get improved 
+
+
+```{r}
+# Make predictions
+predictions <- predict(elastic, test_set)
+# Model prediction performance
+head(data.frame(
+  predictions = predictions,
+  actual = test_set$WINS
+))
+
+data.frame(
+  RMSE = RMSE(predictions, test_set$WINS),
+  Rsquare = R2(predictions, test_set$WINS)
+)
+
+```
+
+Overfitting solution didnt take any effect, so there is no improvement to the best model we identified above. 
+
+
+## Prediction of evaluation data set
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+imputeMissingData <- function(df) {
+  tempData = mice(df,m=5,maxit=50,meth='pmm',seed=500)
+  df <- complete(tempData,1)
+  df
+
+}
+```
+
+```{r message=FALSE, warning=FALSE}
+
+trimColumn <- function(df) {
+  names(df) <- sub("TEAM_", "", names(df))
+names(df) <- sub("BATTING_", "bt_", names(df))
+names(df) <- sub("BASERUN_", "br_", names(df))
+names(df) <- sub("FIELDING_", "fd_", names(df))
+names(df) <- sub("PITCHING_", "ph_", names(df))
+names(df) <- sub("TARGET_", "", names(df))
+head(df)
+df
+}
+
+LoadandpreprocessEvaluationSet <- function () {
+  # load training set 
+  df_train <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Moneyball%20Regression/moneyball-training-data.csv")[-1]
+  # trim the column name and drop the response variable from training set 
+  df_train <- trimColumn(df_train)
+  #drop the response variable from training set. we have to combine it with the evaluation data set and needs have same columns. 
+  
+  df_train <- subset(df_train , select = -c(WINS))
+
+  #create a new column to indidcate it is training set or evaluation set
+  df_train$type = 0
+  # seprate out the evaluation set and return 
+  df_eval <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Moneyball%20Regression/moneyball-evaluation-data.csv")[-1]
+  #trim the evaluation columns 
+  df_eval <- trimColumn(df_eval)
+
+  #create a new column to indidcate it is training set or evaluation set, Set to 1
+  df_eval$type =1
+  # combine training and evaluation in one df and apply the required tranformation for missing data 
+  df_full <- rbind(df_train, df_eval)
+  df_full$bt_1B <- df_full$bt_H - df_full$bt_2B - df_full$bt_3B - df_full$bt_HR
+  df_full$BB <- df_full$bt_BB / df_full$ph_BB
+
+  # transform the missing data using impute function
+  df_full <- imputeMissingData(df_full)
+  #filter only the evaluation set
+  df_eval <- df_full[df_full$type == 1, ]
+  #return the evaluation set 
+  df_eval
+}
+```
+
+```{r results="hide", warning = FALSE }
+df_eval <- LoadandpreprocessEvaluationSet()
+```
+
+
+
+```{r}
+df_eval<- subset(df_eval , select = -c(type))
+#lift the data points by 1 to fix the zero data points( did the same transformation for training set while building the model)
+
+df_eval<-df_eval + 1
+eval_data <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Moneyball%20Regression/moneyball-evaluation-data.csv")
+
+```
+
+# Conclusions on Model Building and Selection
+
+When building a regression model, it may seem easy to throw as many variables into the mix as it takes to get a high R^2. But that will not usually lead to the best and most predictive model out of sample. Often a model with a lower R^2 may in fact be superior if it is more sensible, violates fewer assumptions, has more desirable residual plots, and was built using strong domain knowledge.  
+
+This baseball data was an example of a situation in which, though the absolute R^2 values may not have been the highest, the strongest models were ones in which all assumptions were examined and out of sample predictions were tested.  
+
+# Evaluations
+
+Below we have shown the actual predictions for two of our above models.
+
+## Evaluating using Square transformation model
+
+```{r}
+predictions = predict(regressor_sq, newdata = df_eval)
+eval_data$WINS <- ceiling(predictions- 1) 
+kable(eval_data[, c("INDEX", "WINS")])
+```
+
+## Evaluating using Backward elimination model 
+
+```{r}
+predictions = predict(regressor_backward_E2, newdata = df_eval)
+eval_data$WINS <- ceiling(predictions- 1) 
+kable(eval_data[, c("INDEX", "WINS")])
+
+
+```
+
+
+
