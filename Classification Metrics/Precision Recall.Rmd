@@ -1,0 +1,64 @@
+---
+title: "Classification Evaluation"
+author: "Mary Anna Kivenson"
+date: "March 8, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DT)
+library(caret)
+```
+
+## Download Data
+
+```{r}
+df <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Classification%20Metrics/classification-output-data.csv")
+datatable(df)
+```
+
+
+## Confusion Matrix
+
+```{r}
+cm <- as.matrix.data.frame(table(df$scored.class, df$class))
+rownames(cm) <- c('predicted negative', 'predicted positive')
+colnames(cm) <- c('actual negative', 'actual positive')
+cm
+```
+
+
+
+## Question 5 - Precision
+
+$Precision = \frac{TP}{TP + FP}$
+
+```{r}
+get_precision <- function(actual, predicted){
+  cm <- as.matrix.data.frame(table(predicted, actual))
+  TN <- cm[1,1]
+  FN <- cm[1,2]
+  FP <- cm[2,1]
+  TP <- cm[2,2]
+  return (TP / (TP + FP))
+}
+get_precision(df$class, df$scored.class)
+```
+
+
+## Question 6 - Sensitivity (Recall)
+
+$Sensitivity = \frac{TP}{TP + FN}$
+
+```{r}
+get_sensitivity <- function(actual, predicted){
+  cm <- as.matrix.data.frame(table(predicted, actual))
+  TN <- cm[1,1]
+  FN <- cm[1,2]
+  FP <- cm[2,1]
+  TP <- cm[2,2]
+  return (TP / (TP + FN))
+}
+get_sensitivity(df$class, df$scored.class)
+```
