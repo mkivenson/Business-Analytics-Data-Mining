@@ -1,0 +1,123 @@
+---
+title: "Crime Classification Data - Data Exploration and Preparation"
+date: "March 29, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(ggplot2)
+require(gridExtra)
+library(car)
+library(factoextra)
+library(dplyr)
+library(DT)
+```
+
+# Data Exploration
+
+
+```{r}
+df <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Classification%20Project/crime-training-data_modified.csv")
+datatable(df)
+```
+
+#### Summary
+
+First, we take a look at a summary of the data. A few items of interest are revealed:
+
+* There are no missing values in the dataset
+* There are no immediately apparent outliers
+* Expected clusters are of similar size (237 and 229). This is a necessary assumption for algorithms such as K-Means clustering.
+
+```{r}
+summary(df)
+```
+
+
+
+#### Boxplots
+
+Next, we create boxplots of each of the features - color coded by the target variable. These boxplots reveal significant information about the predictor variables
+
+* The `chas` dummy variable has most of its values at 0
+* indus, zn, nox, age, dis, rad, tax, ptratio, lstat, and medv seem to have strong affects on the target variable  
+
+```{r warning=FALSE, fig.width= 10}
+grid.arrange(ggplot(df, aes(x = as.factor(target), y = zn, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = indus, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = chas, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = nox, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = rm, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = age, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = dis, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = rad, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = tax, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = ptratio, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = lstat, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = as.factor(target), y = medv, fill = as.factor(target))) + geom_boxplot() + theme(legend.position = "none") ,
+             ncol=4)
+```
+
+
+
+#### PCA Component Visualization
+
+PCA can be used for classification, but for now, it will be used to visualize the clusters. First, the number of components will be selected based on the variances explained by each component.
+
+Taking a look at the plot of percentages explained by each principal component, it seems like most of the variance can be explained by 2 principal components. 
+
+
+```{r}
+df.pca <- prcomp(df[1:12], center = TRUE, scale. = TRUE)
+fviz_eig(df.pca)
+```
+
+
+Using these two principal components, a scatterplot of the clusters can be created. Having two principal components makes it easier to distinguish between the two clusters, though there is some overlap.
+
+```{r}
+fviz_pca_ind(df.pca,
+             col.ind = as.factor(df$target), # Color by the quality of representation
+             palette = c("#00AFBB",  "#FC4E07"),
+             addEllipses = TRUE, 
+             legend.title = "Target",
+             labels = FALSE
+             )
+```
+
+
+
+
+
+# Data Preparation
+
+Since the dataset does not have any missing values and there are no outliers that particulary stand out, data preparation will be limited. However, we will locate and address any influential outliers using Cooks Distance. Outliers that have a Cooks distance outside the acceptable threshold of 4 / (N - k - 1) where N is the number of observations and k is the number of predictive variables, will be removed. 
+
+#### Cooks Distance
+
+```{r}
+mod <- lm(target ~ ., data=df)
+cooksd <- cooks.distance(mod)
+plot(cooksd, pch="*", cex=2, main="Influential Outliers by Cooks distance")
+abline(h = 4 / (nrow(df) - ncol(df) - 1), col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  # add labels
+```
+
+
+We remove the influencial outliers. Removing these outliers also makes the two primary components (visualized in the previous step) explain more of the variance in the data.
+
+```{r}
+influential <- as.numeric(names(cooksd)[(cooksd > 4 / (nrow(df) - ncol(df) - 1))])
+df <- df[-influential, ]
+```
+
+### Create Output
+
+```{r}
+write.csv(df, "C:\\Users\\mkive\\Documents\\GitHub\\Business-Analytics-Data-Mining\\Business-Analytics-Data-Mining\\Classification Project\\training_clean.csv")
+```
+
