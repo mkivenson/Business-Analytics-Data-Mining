@@ -1,0 +1,191 @@
+---
+title: "Insurance Model"
+author: "Mary Anna Kivenson"
+date: "April 18, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+require(gridExtra)
+library(corrplot)
+library(VIM)
+library(caret)
+library(mice)
+```
+
+
+## Data Exploration
+
+#### Read Data
+
+Here, we read the training dataset into a dataframe.
+
+```{r}
+df <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Insurance%20Model/insurance_training_data.csv")[-1]
+head(df)
+```
+
+
+```{r}
+df$INCOME <- as.numeric(df$INCOME)
+df$HOME_VAL <- as.numeric(df$HOME_VAL)
+df$BLUEBOOK <- as.numeric(df$BLUEBOOK)
+df$OLDCLAIM <- as.numeric(df$OLDCLAIM)
+```
+
+
+#### Summary
+
+First, we take a look at a summary of the data. 
+
+- There are missing values in the AGE, YOJ, and CAR_AGE columns that must be imputed.
+- There are multiple categorical variables that will have to be encoded (`MSTATUS`, `HOME_VAL`, `SEX`, `EDUCTION`, `JOB`, `CAR_USE`, `RED_CAR`, `REVOKED`, `URBANICITY`)
+
+```{r}
+summary(df)
+```
+
+
+#### Distributions
+
+Taking a look a the distributions of numerical variables, the following items observations are revealed:
+
+* Most of the variables are not normally distributed - features will be centered and scaled as part of the preprocessing.
+* OLDCLAIM values (past payouts) are mostly 0
+
+```{r warning=FALSE}
+grid.arrange(ggplot(df, aes(TARGET_FLAG)) + geom_histogram(binwidth = .5),
+             ggplot(df, aes(TARGET_AMT)) + geom_histogram(binwidth = 1000),
+             ggplot(df, aes(KIDSDRIV)) + geom_histogram(binwidth = .1),
+             ggplot(df, aes(AGE)) + geom_histogram(binwidth = 10),
+             ggplot(df, aes(HOMEKIDS)) + geom_histogram(binwidth = .5),
+             ggplot(df, aes(YOJ)) + geom_histogram(binwidth = 1),
+             ggplot(df, aes(INCOME)) + geom_histogram(binwidth = 500),
+             ggplot(df, aes(HOME_VAL)) + geom_histogram(binwidth = 500),
+             ggplot(df, aes(TRAVTIME)) + geom_histogram(binwidth = 10),
+             ggplot(df, aes(BLUEBOOK)) + geom_histogram(binwidth = 200),
+             ggplot(df, aes(TIF)) + geom_histogram(binwidth = 5),
+             ggplot(df, aes(OLDCLAIM)) + geom_histogram(binwidth = 100),
+             ggplot(df, aes(MVR_PTS)) + geom_histogram(binwidth = 2),
+             ggplot(df, aes(CAR_AGE)) + geom_histogram(binwidth = 2),
+             ncol=4)
+```
+
+
+#### Boxplots
+
+For the classification task, it might be insightful to compare distributions of numerical features for the levels of `TARGET_FLAG`. It appears that the features that differ the most between levels of TARGET_FLAG are `HOME_VAL`, `OLDCLAIM`, and `MVR_PTS`.
+
+```{r warning=FALSE, fig.width= 10}
+grid.arrange(ggplot(df, aes(x = TARGET_FLAG, y = KIDSDRIV, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = AGE, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = HOMEKIDS, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = YOJ, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = INCOME, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = HOME_VAL, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = TRAVTIME, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = BLUEBOOK, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = TIF, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = OLDCLAIM, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = MVR_PTS, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ggplot(df, aes(x = TARGET_FLAG, y = CAR_AGE, fill = as.factor(TARGET_FLAG))) + geom_boxplot() + theme(legend.position = "none") ,
+             ncol=4)
+```
+
+#### Correlations
+
+Looking at a correlation plot of numeric variables, it is evident that there is some collinearity in the dataset.
+
+- `HOMEKIDS` AND `AGE` have a negative correlation
+- `HOMEKIDS` and `KIDSDRIV` have a positive correlation
+- `CLM_FREQ` AND `OLDCLAIM` have a strong negative correlation
+- `MVR_PTS` and `OLDCLAIM` have a negative correlation
+- `MVR_PTS` and `CLM_FREQ` have a negative correlation
+
+```{r}
+corrplot(cor(df[,sapply(df, is.numeric)], use = "complete.obs"), method="color", type="lower", tl.col = "black", tl.srt = 5)
+```
+
+
+## Data Preparation
+
+Based on information gathered by performing exploratory data analysis, we must impute missing values, encode categorical variables, and apply feature transformations. 
+
+#### Missing Values
+
+We will use Multivariable Imputation by Chained Equations (mice) to fill the missing variables.
+
+```{r}
+aggr(df[,sapply(df, is.numeric)], col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(df), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+tempData <- mice(df,m=5,maxit=50,meth='pmm',seed=500)
+df <- complete(tempData,1)
+```
+
+
+#### Encoding
+
+The following categorical features have to be encoded: `MSTATUS`, `HOME_VAL`, `SEX`, `EDUCTION`, `JOB`, `CAR_USE`, `RED_CAR`, `REVOKED`, and `URBANICITY`. To do this, the `dummyVars` function from caret will be used. 
+
+```{r}
+dmy <- dummyVars(" ~ .", data = df)
+df <- data.frame(predict(dmy, newdata = df))
+```
+
+
+
+Taking a look at the new columns in the dataframe, it is clear that some columns are unneccesary. Since each categorical feature requires one less column than categories, we will drop one dummy column for each feature. 
+
+```{r}
+names(df)
+```
+
+
+```{r}
+drop <-  c("PARENT1.No", "MSTATUS.z_No", "SEX.M", "EDUCATION.z_High.School", "JOB.", "CAR_USE.Commercial", "CAR_TYPE.Pickup", "RED_CAR.no", "REVOKED.No", "URBANICITY.z_Highly.Rural..Rural")
+df = df[,!(names(df) %in% drop)]
+```
+
+
+
+#### Transformations
+
+For the linear regression models, performance will be evaluated using R-squared and RMSE. However, for the binary logistic regression model, performance will also be measured based on test data accuracy. To accomplish this, we will create the following datasets. Train and test sets will be transformed separately. 
+
+- insurance_tf: Full dataset, transformed
+- insurance_tf_train: 80% split train dataset, transformed
+- insurance_tf_test: 20% split test dataset, transformed
+
+
+```{r}
+set.seed(42)
+inTrain <- sample(floor(0.8 * nrow(df)))
+
+training <- df[inTrain, -(1:2)]
+test <- df[-inTrain, -(1:2)]
+train_y <- df[inTrain, (1:2)]
+test_y <- df[-inTrain, (1:2)]
+
+preProcValues <- preProcess(training, method = c("center", "scale"))
+
+insurance_tf_train <- predict(preProcValues, training) %>% cbind(train_y)
+insurance_tf_test <- predict(preProcValues, test) %>% cbind(test_y)
+
+preProcValues_all <- preProcess(df[, -(1:2)], method = c("center", "scale"))
+insurance_tf <- predict(preProcValues_all, df[, -(1:2)]) %>% cbind(df[, (1:2)])
+```
+
+
+
+#### Create Output
+
+```{r}
+write.csv(insurance_tf, "C:\\Users\\mkive\\Documents\\GitHub\\Business-Analytics-Data-Mining\\Business-Analytics-Data-Mining\\Insurance Model\\insurance_tf.csv")
+write.csv(insurance_tf_train, "C:\\Users\\mkive\\Documents\\GitHub\\Business-Analytics-Data-Mining\\Business-Analytics-Data-Mining\\Insurance Model\\insurance_tf_train.csv")
+write.csv(insurance_tf_test, "C:\\Users\\mkive\\Documents\\GitHub\\Business-Analytics-Data-Mining\\Business-Analytics-Data-Mining\\Insurance Model\\insurance_tf_test.csv")
+```
+
