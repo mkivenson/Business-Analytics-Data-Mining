@@ -1,0 +1,153 @@
+---
+title: "Wine Count Regression"
+author: "Mary Anna Kivenson"
+date: "May 3, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DT)
+library(VIM)
+library(caret)
+require(gridExtra)
+```
+
+# Data Exploration
+
+```{r}
+df <- read.csv("https://raw.githubusercontent.com/mkivenson/Business-Analytics-Data-Mining/master/Wine%20Count%20Regression/Datasets/wine-training-data.csv")[,-1] # drop the first column, it is the index
+head(df)
+```
+
+
+Taking a look at a summary of the data, there seem to be many missing values in the `ResidualSugar`,`Chlorides`,`FreeSulfurDioxide`,`TotalSulfurDioxide`,`pH`,`Sulphates`,`Alcohol`, and `STARS` fields. The `STARS` and `LabelAppeal` columns are both ordinal variables and may need to be transformed into dummy variables. 
+
+```{r}
+summary(df)
+```
+
+
+
+#### Distributions
+
+The following histograms help visualize the distributions of numerical variables in this dataset. Many of the predictor variables have a narrow spread and have high occurances at the center of the distribution. Normalizing the data may help make the distributions of variables more normal.
+
+
+```{r warning=FALSE}
+grid.arrange(ggplot(df, aes(TARGET)) + geom_histogram(bins = 15, stat = "count"),
+             ggplot(df, aes(FixedAcidity)) + geom_histogram(bins = 15),
+             ggplot(df, aes(VolatileAcidity)) + geom_histogram(bins = 15),
+             ggplot(df, aes(CitricAcid)) + geom_histogram(bins = 15),
+             ggplot(df, aes(ResidualSugar)) + geom_histogram(bins = 15),
+             ggplot(df, aes(Chlorides)) + geom_histogram(bins = 15),
+             ggplot(df, aes(FreeSulfurDioxide)) + geom_histogram(bins = 15),
+             ggplot(df, aes(TotalSulfurDioxide)) + geom_histogram(bins = 15),
+             ggplot(df, aes(Density)) + geom_histogram(bins = 15),
+             ggplot(df, aes(pH)) + geom_histogram(bins = 15),
+             ggplot(df, aes(Sulphates)) + geom_histogram(bins = 15),
+             ggplot(df, aes(Alcohol)) + geom_histogram(bins = 15),
+             ggplot(df, aes(LabelAppeal)) + geom_histogram(bins = 15),
+             ggplot(df, aes(AcidIndex)) + geom_histogram(bins = 15),
+             ggplot(df, aes(STARS)) + geom_histogram(bins = 15),
+             ncol=4)
+```
+
+
+#### Correlation Plot
+
+This correlation plot shows that there is no multicollinearity in the dataset. The correlations between STARS, AcidIndex, LabelAppeal and TARGET are strong. The remaining predictors have little to no correlation with TARGET.
+
+```{r}
+corrplot(cor(df, use = "complete.obs"), method="color", type="lower", tl.col = "black", tl.srt = 5)
+```
+
+
+#### Box Plots
+
+The weak correlations between most of the predictors and TARGET were suprising. The following box plots provide a more in-depth view at the relationship between predictors and the target variable. The plots confirm that the relationship between target and most of the features appears limited.
+
+```{r warning=FALSE, fig.width = 16, fig.height= 10}
+grid.arrange(
+             ggplot(df, aes(x = as.factor(TARGET), FixedAcidity)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), VolatileAcidity)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), CitricAcid)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), ResidualSugar)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), Chlorides)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), FreeSulfurDioxide)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), TotalSulfurDioxide)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), Density)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), pH)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), Sulphates)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), Alcohol)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), LabelAppeal)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), AcidIndex)) +  geom_boxplot(),
+             ggplot(df, aes(x = as.factor(TARGET), STARS)) +  geom_boxplot(),
+             ncol=4)
+```
+
+
+
+### Preprocessing
+
+#### Train Test Split
+
+```{r}
+X_train <- subset(df, select = -c(TARGET))
+y_train <- df$TARGET
+```
+
+
+#### Encoding
+
+The `STARS` and `LabelAppeal` columns contain ordinal data. Using ordinal variables as-is in a model requires the assumption that categories are equally spaced. Since stars and label appeal are both subjective labels, this assumption may not hold true. To resolve this, these ordinal columns will be encoded into dummy variables.
+
+```{r}
+encode_wine_data <- function(df){
+  
+  #ENCODE STARS COLUMN. IF 0 IN ALL 4 COLUMNS, THIS VALUE IS MISSING
+  df$STARS.1 <- replace_na(ifelse(df$STARS == '1', 1, 0),0)
+  df$STARS.2 <- replace_na(ifelse(df$STARS == '2', 1, 0),0)
+  df$STARS.3 <- replace_na(ifelse(df$STARS == '3', 1, 0),0)
+  df$STARS.4 <- replace_na(ifelse(df$STARS == '4', 1, 0),0)
+  
+  
+  #ENCODE LabelAppeal COLUMN
+  df$LabelAppeal.N2 <- ifelse(df$LabelAppeal == '-2', 1, 0)
+  df$LabelAppeal.N1 <- ifelse(df$LabelAppeal == '-1', 1, 0)
+  df$LabelAppeal.P1 <- ifelse(df$LabelAppeal == '1', 1, 0)
+  df$LabelAppeal.P2 <- ifelse(df$LabelAppeal == '2', 1, 0)
+  
+  
+  df <- subset(df, select = -c(STARS, LabelAppeal))  
+  return(df)
+}
+
+
+encode_wine_data(X_train)
+```
+
+#### Missing Data
+
+The following plots provide a visualization of missing data. There appears to be a patten in the mising values, so it will be useful to include a flag for missing data. KNN imputation is unsupervised, meaning it does not require a target variable. A train test split was performed earlier so that only predictor data is used for imputation.
+
+
+```{r warning=FALSE}
+aggr(encode_wine_data(X_train), col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(df), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+```
+
+
+To fill missing values, knn imputation will be used. As part of knn imputation, the data will also be centered and scaled. An additional column will be added to identify the percent of missing values in each row.
+
+```{r}
+fill_wine_data <- function(df){
+  df$missing_amt <- apply(df, 1, function(x) sum(is.na(x)))
+  result <- preProcess(df, method = c("knnImpute"), k = 10)
+  df <- predict(result, df)
+  return(df)
+}
+
+X_train <- X_train %>% encode_wine_data() %>% fill_wine_data()
+```
+
+
