@@ -8,8 +8,11 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(DT)
+library(mlbench)
+library(tidyverse)
 library(VIM)
 library(caret)
+library(corrplot)
 require(gridExtra)
 ```
 
@@ -124,7 +127,7 @@ encode_wine_data <- function(df){
 }
 
 
-encode_wine_data(X_train)
+X_train %>% encode_wine_data() %>% head()
 ```
 
 #### Missing Data
